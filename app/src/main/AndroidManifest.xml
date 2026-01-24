@@ -16,9 +16,9 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/mediabox"
+        android:icon="@mipmap/mediahub"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/mediabox_round"
+        android:roundIcon="@mipmap/mediahub_round"
         android:supportsRtl="true"
         tools:targetApi="31">
     <!--        android:icon="@mipmap/ic_launcher"-->

@@ -138,7 +138,7 @@ fun NowPlayingScreen(
                         modifier = Modifier.size(64.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ArrowBack,
+                            imageVector = Icons.Default.SkipPrevious,
                             contentDescription = "Previous",
                             modifier = Modifier.size(40.dp),
                             tint = if (viewModel.hasPrevious() || currentPosition > 3000)
@@ -154,7 +154,7 @@ fun NowPlayingScreen(
                         modifier = Modifier.size(72.dp)
                     ) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.PlayArrow else Icons.Default.PlayArrow,
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                             contentDescription = if (isPlaying) "Pause" else "Play",
                             modifier = Modifier.size(48.dp)
                         )
@@ -167,7 +167,7 @@ fun NowPlayingScreen(
                         modifier = Modifier.size(64.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ArrowForward,
+                            imageVector = Icons.Default.SkipNext,
                             contentDescription = "Next",
                             modifier = Modifier.size(40.dp),
                             tint = if (viewModel.hasNext())
@@ -191,7 +191,7 @@ fun NowPlayingScreen(
                         label = { Text("Shuffle") },
                         leadingIcon = {
                             Icon(
-                                imageVector = Icons.Default.Send,
+                                imageVector = Icons.Default.Shuffle,
                                 contentDescription = "Shuffle",
                                 modifier = Modifier.size(18.dp)
                             )
