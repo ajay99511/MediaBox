@@ -7,6 +7,8 @@ import androidx.compose.material.icons.Icons
 //import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -80,7 +82,7 @@ fun MiniPlayer(
                     onClick = { viewModel.togglePlayPause() }
                 ) {
                     Icon(
-                        imageVector = if (isPlaying) Icons.Default.PlayArrow else Icons.Default.PlayArrow,
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
                         contentDescription = if (isPlaying) "Pause" else "Play",
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -92,7 +94,7 @@ fun MiniPlayer(
                     enabled = viewModel.hasNext()
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowForward,
+                        imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next",
                         tint = if (viewModel.hasNext())
                             MaterialTheme.colorScheme.primary

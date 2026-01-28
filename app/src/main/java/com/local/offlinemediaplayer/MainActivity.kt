@@ -112,13 +112,13 @@ fun MediaPlayerAppContent(viewModel: MainViewModel) {
             if (currentMedia?.isVideo != true) {
                 NavigationBar {
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.PlayArrow, "Videos") },
+                        icon = { Icon(Icons.Default.VideoLibrary, "Videos") },
                         label = { Text("Videos") },
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 }
                     )
                     NavigationBarItem(
-                        icon = { Icon(Icons.Default.Favorite, "Music") },
+                        icon = { Icon(Icons.Default.LibraryMusic, "Music") },
                         label = { Text("Music") },
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 }
@@ -128,6 +128,7 @@ fun MediaPlayerAppContent(viewModel: MainViewModel) {
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize()) {
+            //bottom = padding.calculateBottomPadding()
             if (currentMedia?.isVideo == true) {
                 VideoPlayerScreen(viewModel, onBack = {
                     currentMedia = null
@@ -347,7 +348,7 @@ fun PlaylistListScreen(
                         headlineContent = { Text(playlist.name) },
                         supportingContent = { Text("${playlist.mediaIds.size} songs") },
                         leadingContent = {
-                            Icon(Icons.Default.List, null, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.FormatListNumbered, null, modifier = Modifier.size(40.dp))
                         },
                         modifier = Modifier.clickable { onPlaylistClick(playlist.id) }
                     )
@@ -480,7 +481,7 @@ fun VideoPlayerScreen(viewModel: MainViewModel, onBack: () -> Unit) {
             )
         }
         IconButton(onClick = onBack, modifier = Modifier.align(Alignment.TopStart).padding(16.dp)) {
-            Icon(Icons.Default.ArrowBack, "Back", tint = Color.White)
+            Icon(Icons.Default.ArrowBackIosNew, "Back", tint = Color.White)
         }
     }
 }

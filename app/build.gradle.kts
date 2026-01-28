@@ -52,7 +52,10 @@ dependencies {
     implementation(libs.androidx.material3)
 
     // Icons Extended for Shuffle and other specific icons
-    implementation("androidx.compose.material:material-icons-extended")
+//    implementation("androidx.compose.material:material-icons-extended")
+//    implementation("androidx.compose.material:1.10.2")
+    implementation("androidx.compose.material:material-icons-extended:1.7.8")
+
 
     // Hilt Dependency Injection
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
