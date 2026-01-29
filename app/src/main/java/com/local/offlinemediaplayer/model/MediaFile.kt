@@ -8,5 +8,6 @@ data class MediaFile(
     val artist: String? = null,
     val duration: Long,
     val isVideo: Boolean,
-    val albumArtUri: Uri? = null
+    val albumArtUri: Uri? = null,
+    val albumId: Long = -1
 )

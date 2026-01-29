@@ -51,6 +51,8 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
 
+    implementation("com.google.android.material:material:1.11.0")
+
     // Icons Extended for Shuffle and other specific icons
 //    implementation("androidx.compose.material:material-icons-extended")
 //    implementation("androidx.compose.material:1.10.2")
@@ -60,6 +62,7 @@ dependencies {
     // Hilt Dependency Injection
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     implementation("com.google.dagger:hilt-android:2.58")
+    implementation(libs.androidx.compose.animation.core)
     kapt("com.google.dagger:hilt-compiler:2.58")
 
     // Navigation for switching screens

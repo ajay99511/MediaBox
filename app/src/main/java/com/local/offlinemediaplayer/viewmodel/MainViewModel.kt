@@ -14,6 +14,7 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import com.local.offlinemediaplayer.model.Album
 import com.local.offlinemediaplayer.model.MediaFile
 import com.local.offlinemediaplayer.model.Playlist
 import com.local.offlinemediaplayer.repository.PlaylistRepository
@@ -43,6 +44,9 @@ class MainViewModel @Inject constructor(
 
     private val _audioList = MutableStateFlow<List<MediaFile>>(emptyList())
     val audioList = _audioList.asStateFlow()
+
+    private val _albums = MutableStateFlow<List<Album>>(emptyList())
+    val albums = _albums.asStateFlow()
 
     // Playlist State
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
@@ -139,6 +143,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _videoList.value = queryMedia(isVideo = true)
             _audioList.value = queryMedia(isVideo = false)
+            _albums.value = queryAlbums()
         }
     }
 
@@ -174,21 +179,62 @@ class MainViewModel @Inject constructor(
 
                     var artist = ""
                     var albumArtUri: Uri? = null
+                    var albumId: Long = -1
 
                     if (!isVideo) {
                         artist = cursor.getString(artistColumn) ?: "Unknown Artist"
-                        val albumId = cursor.getLong(albumIdColumn)
+                        albumId = cursor.getLong(albumIdColumn)
                         val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
                         albumArtUri = ContentUris.withAppendedId(sArtworkUri, albumId)
                     }
 
-                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, albumArtUri))
+                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, albumArtUri, albumId))
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return mediaList
+    }
+
+    private fun queryAlbums(): List<Album> {
+        val albumList = mutableListOf<Album>()
+        val collection = if (android.os.Build.VERSION.SDK_INT >= 29) {
+            MediaStore.Audio.Albums.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI
+        }
+
+        val projection = arrayOf(
+            MediaStore.Audio.Albums._ID,
+            MediaStore.Audio.Albums.ALBUM,
+            MediaStore.Audio.Albums.ARTIST,
+            MediaStore.Audio.Albums.NUMBER_OF_SONGS
+        )
+
+        try {
+            app.contentResolver.query(collection, projection, null, null, null)?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums._ID)
+                val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.ALBUM)
+                val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.ARTIST)
+                val countColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.NUMBER_OF_SONGS)
+
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idColumn)
+                    val name = cursor.getString(albumColumn) ?: "Unknown Album"
+                    val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
+                    val count = cursor.getInt(countColumn)
+
+                    val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
+                    val albumArtUri = ContentUris.withAppendedId(sArtworkUri, id)
+
+                    albumList.add(Album(id, name, artist, count, albumArtUri))
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return albumList
     }
 
     // --- Playlist Management ---
@@ -262,6 +308,14 @@ class MainViewModel @Inject constructor(
         if (playlistSongs.isNotEmpty()) {
             val startIndex = if (shuffle) (playlistSongs.indices).random() else 0
             setQueue(playlistSongs, startIndex, shuffle)
+        }
+    }
+
+    fun playAlbum(album: Album, shuffle: Boolean) {
+        val albumSongs = _audioList.value.filter { it.albumId == album.id }
+        if (albumSongs.isNotEmpty()) {
+            val startIndex = if (shuffle) (albumSongs.indices).random() else 0
+            setQueue(albumSongs, startIndex, shuffle)
         }
     }
 
