@@ -16,13 +16,14 @@
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
-        android:icon="@mipmap/mediahub"
-        android:roundIcon="@mipmap/mediahub_round"
+        android:label="@string/app_name"
+        android:icon="@mipmap/app_logo"
+        android:roundIcon="@mipmap/app_logo_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar"
         tools:targetApi="31">
-        <!--        android:label="@string/app_name"-->
-    <!--        android:icon="@mipmap/ic_launcher"-->
+<!--                android:label="@string/app_name"-->
+<!--            android:icon="@mipmap/ic_launcher"-->
         <!--        android:roundIcon="@mipmap/ic_launcher_round"-->
         <!-- Main Activity -->
         <activity

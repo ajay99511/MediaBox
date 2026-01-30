@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -359,7 +360,7 @@ fun AppHeader() {
                 modifier = Modifier.weight(1f)
             ) {
                 Text(
-                    text = "MediaBox",
+                    text = "FastBeat",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -373,6 +374,10 @@ fun AppHeader() {
                 initial = "M",
                 animatedAlpha = animatedAlpha
             )
+//            AnimeProfileAvatar(
+//                painter = painterResource(id = R.mipmap.app_logo),
+//                animatedAlpha = animatedAlpha
+//            )
         }
     }
 }

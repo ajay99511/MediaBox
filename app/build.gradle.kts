@@ -63,6 +63,7 @@ dependencies {
     implementation("androidx.hilt:hilt-navigation-compose:1.1.0")
     implementation("com.google.dagger:hilt-android:2.58")
     implementation(libs.androidx.compose.animation.core)
+    implementation(libs.androidx.compose.ui)
     kapt("com.google.dagger:hilt-compiler:2.58")
 
     // Navigation for switching screens
