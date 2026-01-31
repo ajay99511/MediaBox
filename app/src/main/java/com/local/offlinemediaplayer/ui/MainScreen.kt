@@ -31,12 +31,13 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.local.offlinemediaplayer.model.MediaFile
 import com.local.offlinemediaplayer.ui.navigation.AudioNavigationHost
+import com.local.offlinemediaplayer.ui.navigation.VideoNavigationHost
 import com.local.offlinemediaplayer.ui.screens.ImageListScreen
 import com.local.offlinemediaplayer.ui.screens.PermissionRationaleScreen
 import com.local.offlinemediaplayer.ui.screens.PermissionRequestScreen
-import com.local.offlinemediaplayer.ui.screens.VideoListScreen
 import com.local.offlinemediaplayer.ui.screens.VideoPlayerScreen
 import com.local.offlinemediaplayer.ui.theme.Headers.AppHeader
+import com.local.offlinemediaplayer.ui.theme.Headers.VideoHeader
 import com.local.offlinemediaplayer.viewmodel.MainViewModel
 
 @Composable
@@ -128,24 +129,45 @@ fun MediaPlayerAppContent(viewModel: MainViewModel) {
     var currentMedia by remember { mutableStateOf<MediaFile?>(null) }
 
     // Hoist Navigation State
-    val navController = rememberNavController()
-    val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val audioNavController = rememberNavController()
+    val videoNavController = rememberNavController()
 
-    // Define which routes should hide the AppHeader and BottomBar
-    val isAudioDetailScreen = currentRoute != "audio_library"
+    // Determine current routes for conditional UI logic
+    val audioNavBackStackEntry by audioNavController.currentBackStackEntryAsState()
+    val videoNavBackStackEntry by videoNavController.currentBackStackEntryAsState()
+
+    val currentAudioRoute = audioNavBackStackEntry?.destination?.route
+    val currentVideoRoute = videoNavBackStackEntry?.destination?.route
+
+    // UI Logic Variables
     val isVideoPlaying = currentMedia?.isVideo == true
+    val isAudioDetailScreen = currentAudioRoute != "audio_library"
+    // Hide header if we are deep in video nav (e.g., viewing a list inside a folder), though design suggests header might be for the whole tab.
+    // Let's keep the header for the main landing page of the video tab.
+    val isVideoRoot = currentVideoRoute == "video_folders" || currentVideoRoute == null
 
-    // Only show bars if we are:
-    // 1. NOT playing a video
-    // 2. AND (We are in Video Tab OR Images Tab OR (We are in Audio Tab and at the root library screen))
+    // Logic:
+    // Show Header if: NOT playing video AND ( (Tab=Video AND VideoRoot) OR (Tab=Audio AND AudioRoot) OR (Tab=Images) )
+    // Note: User requested specific header "Only when we click videos tab"
+
     val showBars = !isVideoPlaying && (selectedTab != 1 || !isAudioDetailScreen)
 
     Scaffold(
-        // Custom Top Bar (Conditionally Visible)
+        // Custom Top Bar
         topBar = {
             if (showBars) {
-                AppHeader()
+                if (selectedTab == 0) {
+                    // Video Tab Header
+                    if (isVideoRoot) {
+                        VideoHeader()
+                    }
+                } else if (selectedTab == 1) {
+                    // Audio Tab Header (Standard)
+                    if (!isAudioDetailScreen) AppHeader()
+                } else {
+                    // Images Tab Header (Standard)
+                    AppHeader()
+                }
             }
         },
         bottomBar = {
@@ -232,14 +254,19 @@ fun MediaPlayerAppContent(viewModel: MainViewModel) {
             } else {
                 when (selectedTab) {
                     0 -> {
-                        VideoListScreen(viewModel) { file ->
-                            currentMedia = file
-                            viewModel.playMedia(file)
-                        }
+                        // Video Tab with Navigation
+                        VideoNavigationHost(
+                            viewModel = viewModel,
+                            navController = videoNavController,
+                            onVideoClick = { file ->
+                                currentMedia = file
+                                viewModel.playMedia(file)
+                            }
+                        )
                     }
                     1 -> {
-                        // Pass the hoisted controller to the host
-                        AudioNavigationHost(viewModel, navController)
+                        // Audio Tab with Navigation
+                        AudioNavigationHost(viewModel, audioNavController)
                     }
                     2 -> {
                         ImageListScreen(viewModel)

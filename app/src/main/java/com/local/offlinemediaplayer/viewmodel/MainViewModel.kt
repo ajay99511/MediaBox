@@ -18,6 +18,7 @@ import androidx.media3.session.SessionToken
 import com.local.offlinemediaplayer.model.Album
 import com.local.offlinemediaplayer.model.MediaFile
 import com.local.offlinemediaplayer.model.Playlist
+import com.local.offlinemediaplayer.model.VideoFolder
 import com.local.offlinemediaplayer.repository.PlaylistRepository
 import com.local.offlinemediaplayer.service.PlaybackService
 import com.google.common.util.concurrent.ListenableFuture
@@ -30,6 +31,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -59,6 +61,22 @@ class MainViewModel @Inject constructor(
     private val _albums = MutableStateFlow<List<Album>>(emptyList())
     val albums = _albums.asStateFlow()
 
+    // Derived State: Video Folders
+    val videoFolders = _videoList.map { videos ->
+        videos.groupBy { it.bucketId }.map { (bucketId, bucketVideos) ->
+            VideoFolder(
+                id = bucketId,
+                name = bucketVideos.firstOrNull()?.bucketName ?: "Unknown",
+                videoCount = bucketVideos.size,
+                thumbnailUri = bucketVideos.firstOrNull()?.uri ?: Uri.EMPTY
+            )
+        }.sortedBy { it.name }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     // Playlist State
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val playlists = _playlists.asStateFlow()
@@ -69,6 +87,10 @@ class MainViewModel @Inject constructor(
 
     private val _albumSearchQuery = MutableStateFlow("")
     val albumSearchQuery = _albumSearchQuery.asStateFlow()
+
+    // Video Folder Search
+    private val _folderSearchQuery = MutableStateFlow("")
+    val folderSearchQuery = _folderSearchQuery.asStateFlow()
 
     private val _sortOption = MutableStateFlow(SortOption.DATE_ADDED_DESC)
     val sortOption = _sortOption.asStateFlow()
@@ -148,6 +170,10 @@ class MainViewModel @Inject constructor(
 
     fun updateAlbumSearchQuery(query: String) {
         _albumSearchQuery.value = query
+    }
+
+    fun updateFolderSearchQuery(query: String) {
+        _folderSearchQuery.value = query
     }
 
     fun updateSortOption(option: SortOption) {
@@ -260,9 +286,21 @@ class MainViewModel @Inject constructor(
         }
 
         val projection = if (isVideo) {
-            arrayOf(MediaStore.Video.Media._ID, MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DURATION)
+            arrayOf(
+                MediaStore.Video.Media._ID,
+                MediaStore.Video.Media.DISPLAY_NAME,
+                MediaStore.Video.Media.DURATION,
+                MediaStore.Video.Media.BUCKET_ID,
+                MediaStore.Video.Media.BUCKET_DISPLAY_NAME
+            )
         } else {
-            arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID)
+            arrayOf(
+                MediaStore.Audio.Media._ID,
+                MediaStore.Audio.Media.TITLE,
+                MediaStore.Audio.Media.ARTIST,
+                MediaStore.Audio.Media.DURATION,
+                MediaStore.Audio.Media.ALBUM_ID
+            )
         }
 
         try {
@@ -272,6 +310,10 @@ class MainViewModel @Inject constructor(
                 val durationColumn = cursor.getColumnIndexOrThrow(if (isVideo) MediaStore.Video.Media.DURATION else MediaStore.Audio.Media.DURATION)
                 val artistColumn = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST) else -1
                 val albumIdColumn = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID) else -1
+
+                // Folder Info (Only for Video for now)
+                val bucketIdColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.BUCKET_ID) else -1
+                val bucketNameColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.BUCKET_DISPLAY_NAME) else -1
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
@@ -283,7 +325,13 @@ class MainViewModel @Inject constructor(
                     var albumArtUri: Uri? = null
                     var albumId: Long = -1
 
-                    if (!isVideo) {
+                    var bucketId = ""
+                    var bucketName = ""
+
+                    if (isVideo) {
+                        bucketId = if(bucketIdColumn != -1) cursor.getString(bucketIdColumn) ?: "" else ""
+                        bucketName = if(bucketNameColumn != -1) cursor.getString(bucketNameColumn) ?: "Unknown" else "Unknown"
+                    } else {
                         artist = cursor.getString(artistColumn) ?: "Unknown Artist"
                         albumId = cursor.getLong(albumIdColumn)
                         val sArtworkUri = "content://media/external/audio/albumart".toUri()
@@ -291,7 +339,7 @@ class MainViewModel @Inject constructor(
                     }
 
                     // isImage = false
-                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, false, albumArtUri, albumId))
+                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, false, albumArtUri, albumId, bucketId, bucketName))
                 }
             }
         } catch (e: Exception) {

@@ -6,12 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -24,33 +21,58 @@ import coil.compose.AsyncImage
 import com.local.offlinemediaplayer.model.MediaFile
 import com.local.offlinemediaplayer.viewmodel.MainViewModel
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun VideoListScreen(viewModel: MainViewModel, onVideoClick: (MediaFile) -> Unit) {
-    val videos by viewModel.videoList.collectAsStateWithLifecycle()
+fun VideoListScreen(
+    viewModel: MainViewModel,
+    onVideoClick: (MediaFile) -> Unit,
+    videoListOverride: List<MediaFile>? = null,
+    title: String? = null,
+    onBack: (() -> Unit)? = null
+) {
+    val videosState by viewModel.videoList.collectAsStateWithLifecycle()
+    val videos = videoListOverride ?: videosState
 
-    if (videos.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    "No videos found on device",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+    Column(
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0B0B0F))
+    ) {
+        // Optional Header for Folder View
+        if (title != null && onBack != null) {
+            TopAppBar(
+                title = { Text(title, color = Color.White) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color(0xFF0B0B0F))
+            )
         }
-    } else {
-        LazyColumn(contentPadding = PaddingValues(top = 8.dp)) {
-            items(items = videos, key = { it.id }) { video ->
-                VideoListItem(video, onVideoClick)
+
+        if (videos.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "No videos found",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        } else {
+            LazyColumn(contentPadding = PaddingValues(top = 8.dp)) {
+                items(items = videos, key = { it.id }) { video ->
+                    VideoListItem(video, onVideoClick)
+                }
             }
         }
     }
@@ -59,11 +81,12 @@ fun VideoListScreen(viewModel: MainViewModel, onVideoClick: (MediaFile) -> Unit)
 @Composable
 private fun VideoListItem(video: MediaFile, onVideoClick: (MediaFile) -> Unit) {
     ListItem(
-        headlineContent = { Text(video.title, maxLines = 1) },
+        headlineContent = { Text(video.title, maxLines = 1, color = Color.White) },
         supportingContent = {
             Text(
                 formatDuration(video.duration),
-                style = MaterialTheme.typography.bodySmall
+                style = MaterialTheme.typography.bodySmall,
+                color = Color.Gray
             )
         },
         leadingContent = {
@@ -74,9 +97,10 @@ private fun VideoListItem(video: MediaFile, onVideoClick: (MediaFile) -> Unit) {
                 contentScale = ContentScale.Crop
             )
         },
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
         modifier = Modifier.clickable { onVideoClick(video) }
     )
-    HorizontalDivider()
+    HorizontalDivider(color = Color(0xFF1E1E24))
 }
 
 private fun formatDuration(millis: Long): String {
