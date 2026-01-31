@@ -6,6 +6,7 @@ import android.content.ContentUris
 import android.net.Uri
 import android.provider.MediaStore
 import androidx.annotation.OptIn
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.media3.common.MediaItem
@@ -26,10 +27,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import javax.inject.Inject
+
+enum class SortOption {
+    TITLE_ASC, TITLE_DESC, DURATION_ASC, DURATION_DESC, DATE_ADDED_DESC
+}
 
 @OptIn(UnstableApi::class)
 @HiltViewModel
@@ -45,6 +53,9 @@ class MainViewModel @Inject constructor(
     private val _audioList = MutableStateFlow<List<MediaFile>>(emptyList())
     val audioList = _audioList.asStateFlow()
 
+    private val _imageList = MutableStateFlow<List<MediaFile>>(emptyList())
+    val imageList = _imageList.asStateFlow()
+
     private val _albums = MutableStateFlow<List<Album>>(emptyList())
     val albums = _albums.asStateFlow()
 
@@ -52,17 +63,56 @@ class MainViewModel @Inject constructor(
     private val _playlists = MutableStateFlow<List<Playlist>>(emptyList())
     val playlists = _playlists.asStateFlow()
 
+    // Search and Sort State
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery = _searchQuery.asStateFlow()
+
+    private val _albumSearchQuery = MutableStateFlow("")
+    val albumSearchQuery = _albumSearchQuery.asStateFlow()
+
+    private val _sortOption = MutableStateFlow(SortOption.DATE_ADDED_DESC)
+    val sortOption = _sortOption.asStateFlow()
+
+    // Computed Flow for Filtered/Sorted Audio
+    val filteredAudioList = combine(_audioList, _searchQuery, _sortOption) { list, query, sort ->
+        var result = list
+        // Filter
+        if (query.isNotEmpty()) {
+            result = result.filter {
+                it.title.contains(query, ignoreCase = true) ||
+                        (it.artist?.contains(query, ignoreCase = true) == true)
+            }
+        }
+        // Sort
+        when(sort) {
+            SortOption.TITLE_ASC -> result.sortedBy { it.title }
+            SortOption.TITLE_DESC -> result.sortedByDescending { it.title }
+            SortOption.DURATION_ASC -> result.sortedBy { it.duration }
+            SortOption.DURATION_DESC -> result.sortedByDescending { it.duration }
+            SortOption.DATE_ADDED_DESC -> result.sortedByDescending { it.id } // ID is a proxy for date added
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    // Computed Flow for Filtered Albums
+    val filteredAlbums = combine(_albums, _albumSearchQuery) { list, query ->
+        if (query.isEmpty()) list
+        else list.filter {
+            it.name.contains(query, ignoreCase = true) ||
+                    it.artist.contains(query, ignoreCase = true)
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     // Player State
     private val _player = MutableStateFlow<MediaController?>(null)
     val player = _player.asStateFlow()
-
-    private val _currentQueue = MutableStateFlow<List<MediaFile>>(emptyList())
-    val currentQueue = _currentQueue.asStateFlow()
-
-    private val _originalQueue = MutableStateFlow<List<MediaFile>>(emptyList())
-
-    private val _currentIndex = MutableStateFlow<Int?>(null)
-    val currentIndex = _currentIndex.asStateFlow()
 
     private val _currentTrack = MutableStateFlow<MediaFile?>(null)
     val currentTrack = _currentTrack.asStateFlow()
@@ -72,6 +122,10 @@ class MainViewModel @Inject constructor(
 
     private val _isShuffleEnabled = MutableStateFlow(false)
     val isShuffleEnabled = _isShuffleEnabled.asStateFlow()
+
+    // Repeat Mode
+    private val _repeatMode = MutableStateFlow(Player.REPEAT_MODE_OFF)
+    val repeatMode = _repeatMode.asStateFlow()
 
     private val _currentPosition = MutableStateFlow(0L)
     val currentPosition = _currentPosition.asStateFlow()
@@ -87,6 +141,19 @@ class MainViewModel @Inject constructor(
         loadPlaylists()
     }
 
+    // --- Actions for UI ---
+    fun updateSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun updateAlbumSearchQuery(query: String) {
+        _albumSearchQuery.value = query
+    }
+
+    fun updateSortOption(option: SortOption) {
+        _sortOption.value = option
+    }
+
     private fun initializeMediaController() {
         val sessionToken = SessionToken(app, ComponentName(app, PlaybackService::class.java))
         controllerFuture = MediaController.Builder(app, sessionToken).buildAsync()
@@ -95,6 +162,14 @@ class MainViewModel @Inject constructor(
                 val controller = controllerFuture?.get()
                 _player.value = controller
                 setupPlayerListener(controller)
+
+                // Initialize state from controller if it's already running
+                if (controller != null) {
+                    _isPlaying.value = controller.isPlaying
+                    _isShuffleEnabled.value = controller.shuffleModeEnabled
+                    _repeatMode.value = controller.repeatMode
+                    updateCurrentTrackFromPlayer(controller)
+                }
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -104,11 +179,8 @@ class MainViewModel @Inject constructor(
     private fun setupPlayerListener(controller: MediaController?) {
         controller?.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
-                when (playbackState) {
-                    Player.STATE_ENDED -> playNext()
-                    Player.STATE_READY -> {
-                        _duration.value = controller.duration.coerceAtLeast(0L)
-                    }
+                if (playbackState == Player.STATE_READY) {
+                    _duration.value = controller.duration.coerceAtLeast(0L)
                 }
             }
 
@@ -116,7 +188,36 @@ class MainViewModel @Inject constructor(
                 _isPlaying.value = isPlaying
                 if (isPlaying) startPositionUpdates() else stopPositionUpdates()
             }
+
+            override fun onShuffleModeEnabledChanged(shuffleModeEnabled: Boolean) {
+                _isShuffleEnabled.value = shuffleModeEnabled
+            }
+
+            override fun onRepeatModeChanged(repeatMode: Int) {
+                _repeatMode.value = repeatMode
+            }
+
+            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                updateCurrentTrackFromPlayer(controller)
+            }
         })
+    }
+
+    private fun updateCurrentTrackFromPlayer(controller: MediaController) {
+        val currentMediaItem = controller.currentMediaItem
+        if (currentMediaItem == null) {
+            _currentTrack.value = null
+            return
+        }
+
+        val idString = currentMediaItem.mediaId
+        val id = idString.toLongOrNull()
+
+        if (id != null) {
+            val track = _audioList.value.find { it.id == id }
+                ?: _videoList.value.find { it.id == id }
+            _currentTrack.value = track
+        }
     }
 
     private fun startPositionUpdates() {
@@ -143,6 +244,7 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             _videoList.value = queryMedia(isVideo = true)
             _audioList.value = queryMedia(isVideo = false)
+            _imageList.value = queryImages()
             _albums.value = queryAlbums()
         }
     }
@@ -184,17 +286,63 @@ class MainViewModel @Inject constructor(
                     if (!isVideo) {
                         artist = cursor.getString(artistColumn) ?: "Unknown Artist"
                         albumId = cursor.getLong(albumIdColumn)
-                        val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
+                        val sArtworkUri = "content://media/external/audio/albumart".toUri()
                         albumArtUri = ContentUris.withAppendedId(sArtworkUri, albumId)
                     }
 
-                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, albumArtUri, albumId))
+                    // isImage = false
+                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, false, albumArtUri, albumId))
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
         return mediaList
+    }
+
+    private fun queryImages(): List<MediaFile> {
+        val imageList = mutableListOf<MediaFile>()
+        val collection = if (android.os.Build.VERSION.SDK_INT >= 29) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+
+        val projection = arrayOf(
+            MediaStore.Images.Media._ID,
+            MediaStore.Images.Media.DISPLAY_NAME
+        )
+
+        try {
+            app.contentResolver.query(collection, projection, null, null, "${MediaStore.Images.Media.DATE_ADDED} DESC")?.use { cursor ->
+                val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media._ID)
+                val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Images.Media.DISPLAY_NAME)
+
+                while (cursor.moveToNext()) {
+                    val id = cursor.getLong(idColumn)
+                    val name = cursor.getString(nameColumn) ?: "Unknown Image"
+                    val contentUri = ContentUris.withAppendedId(collection, id)
+
+                    // Construct MediaFile with isImage = true
+                    imageList.add(
+                        MediaFile(
+                            id = id,
+                            uri = contentUri,
+                            title = name,
+                            artist = null,
+                            duration = 0,
+                            isVideo = false,
+                            isImage = true,
+                            albumArtUri = null,
+                            albumId = -1
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        return imageList
     }
 
     private fun queryAlbums(): List<Album> {
@@ -209,7 +357,8 @@ class MainViewModel @Inject constructor(
             MediaStore.Audio.Albums._ID,
             MediaStore.Audio.Albums.ALBUM,
             MediaStore.Audio.Albums.ARTIST,
-            MediaStore.Audio.Albums.NUMBER_OF_SONGS
+            MediaStore.Audio.Albums.NUMBER_OF_SONGS,
+            MediaStore.Audio.Albums.FIRST_YEAR
         )
 
         try {
@@ -218,6 +367,7 @@ class MainViewModel @Inject constructor(
                 val albumColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.ALBUM)
                 val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.ARTIST)
                 val countColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.NUMBER_OF_SONGS)
+                val yearColumn = cursor.getColumnIndex(MediaStore.Audio.Albums.FIRST_YEAR)
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
@@ -225,10 +375,13 @@ class MainViewModel @Inject constructor(
                     val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
                     val count = cursor.getInt(countColumn)
 
-                    val sArtworkUri = Uri.parse("content://media/external/audio/albumart")
+                    val year = if (yearColumn != -1) cursor.getInt(yearColumn) else null
+                    val finalYear = if (year != null && year > 1900) year else null
+
+                    val sArtworkUri = "content://media/external/audio/albumart".toUri()
                     val albumArtUri = ContentUris.withAppendedId(sArtworkUri, id)
 
-                    albumList.add(Album(id, name, artist, count, albumArtUri))
+                    albumList.add(Album(id, name, artist, count, finalYear, albumArtUri))
                 }
             }
         } catch (e: Exception) {
@@ -286,17 +439,60 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun toggleAlbumInFavorites(albumSongs: List<MediaFile>) {
+        val favName = "Favorites"
+        var favPlaylist = _playlists.value.find { it.name == favName }
+
+        if (favPlaylist == null) {
+            createPlaylist(favName)
+            favPlaylist = _playlists.value.find { it.name == favName }
+        }
+
+        if (favPlaylist == null) return
+
+        val actualFav = favPlaylist
+        val allInFav = albumSongs.all { actualFav.mediaIds.contains(it.id) }
+        val newMediaIds = actualFav.mediaIds.toMutableList()
+
+        if (allInFav) {
+            albumSongs.forEach { newMediaIds.remove(it.id) }
+        } else {
+            albumSongs.forEach {
+                if (!newMediaIds.contains(it.id)) newMediaIds.add(it.id)
+            }
+        }
+
+        val updatedPlaylist = actualFav.copy(mediaIds = newMediaIds)
+        val updatedList = _playlists.value.map { if (it.id == actualFav.id) updatedPlaylist else it }
+
+        _playlists.value = updatedList
+        viewModelScope.launch(Dispatchers.IO) {
+            playlistRepository.savePlaylists(updatedList)
+        }
+    }
+
     // --- Playback Logic ---
 
     fun playMedia(media: MediaFile) {
         if (media.isVideo) {
-            playMediaItem(media)
+            playSingleMedia(media)
+        } else if (media.isImage) {
+            // No-op for now, or implement image viewer logic
         } else {
-            val allAudioFiles = _audioList.value
-            val startIndex = allAudioFiles.indexOfFirst { it.id == media.id }
+            // Audio playback - set up queue
+            val currentVisibleList = filteredAudioList.value.takeIf { it.isNotEmpty() } ?: _audioList.value
+
+            val startIndex = currentVisibleList.indexOfFirst { it.id == media.id }
             if (startIndex >= 0) {
-                setQueue(allAudioFiles, startIndex, false)
+                setQueue(currentVisibleList, startIndex, false)
             }
+        }
+    }
+
+    fun playMediaFromList(media: MediaFile, list: List<MediaFile>) {
+        val startIndex = list.indexOfFirst { it.id == media.id }
+        if (startIndex >= 0) {
+            setQueue(list, startIndex, false)
         }
     }
 
@@ -320,92 +516,59 @@ class MainViewModel @Inject constructor(
     }
 
     fun playAll(shuffle: Boolean) {
-        val allAudio = _audioList.value
-        if (allAudio.isNotEmpty()) {
-            val startIndex = if (shuffle) (allAudio.indices).random() else 0
-            setQueue(allAudio, startIndex, shuffle)
+        val currentList = filteredAudioList.value.takeIf { it.isNotEmpty() } ?: _audioList.value
+        if (currentList.isNotEmpty()) {
+            val startIndex = if (shuffle) (currentList.indices).random() else 0
+            setQueue(currentList, startIndex, shuffle)
         }
     }
 
-    private fun playMediaItem(media: MediaFile) {
+    private fun playSingleMedia(media: MediaFile) {
         _player.value?.let { controller ->
-            val mediaItem = MediaItem.Builder()
-                .setUri(media.uri)
-                .setMediaId(media.id.toString())
-                .setMediaMetadata(
-                    MediaMetadata.Builder()
-                        .setTitle(media.title)
-                        .setArtist(media.artist)
-                        .setArtworkUri(media.albumArtUri)
-                        .build()
-                )
-                .build()
-            controller.setMediaItem(mediaItem)
+            controller.setMediaItem(media.toMediaItem())
             controller.prepare()
             controller.play()
         }
     }
 
     fun setQueue(songs: List<MediaFile>, startIndex: Int, shuffle: Boolean = false) {
-        if (songs.isEmpty() || startIndex !in songs.indices) return
-
-        _originalQueue.value = songs
-        _isShuffleEnabled.value = shuffle
-
-        _currentQueue.value = if (shuffle) {
-            createShuffledQueue(songs, startIndex)
-        } else {
-            songs
+        _player.value?.let { controller ->
+            val mediaItems = songs.map { it.toMediaItem() }
+            controller.setMediaItems(mediaItems, startIndex, 0L)
+            controller.shuffleModeEnabled = shuffle
+            controller.prepare()
+            controller.play()
         }
-
-        _currentIndex.value = if (shuffle) 0 else startIndex
-        updateCurrentTrack()
-        playCurrentTrack()
     }
 
-    private fun createShuffledQueue(songs: List<MediaFile>, currentIndex: Int): List<MediaFile> {
-        val currentSong = songs[currentIndex]
-        val otherSongs = songs.toMutableList().apply { removeAt(currentIndex) }.shuffled()
-        return listOf(currentSong) + otherSongs
-    }
+    private fun MediaFile.toMediaItem(): MediaItem {
+        val metadata = MediaMetadata.Builder()
+            .setTitle(title)
+            .setArtist(artist)
+            .setArtworkUri(albumArtUri)
+            .build()
 
-    private fun updateCurrentTrack() {
-        val index = _currentIndex.value
-        val queue = _currentQueue.value
-        _currentTrack.value = if (index != null && index in queue.indices) queue[index] else null
-    }
-
-    private fun playCurrentTrack() {
-        _currentTrack.value?.let { track -> playMediaItem(track) }
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMediaId(id.toString())
+            .setMediaMetadata(metadata)
+            .build()
     }
 
     // --- Controls ---
 
     fun playNext() {
-        val currentIdx = _currentIndex.value ?: return
-        val queue = _currentQueue.value
-        if (queue.isEmpty()) return
-
-        val nextIndex = if (currentIdx < queue.size - 1) currentIdx + 1 else 0
-        _currentIndex.value = nextIndex
-        updateCurrentTrack()
-        playCurrentTrack()
+        _player.value?.let { if (it.hasNextMediaItem()) it.seekToNext() }
     }
 
     fun playPrevious() {
-        val currentIdx = _currentIndex.value ?: return
-        val queue = _currentQueue.value
-        if (queue.isEmpty()) return
-
-        if (_currentPosition.value > 3000) {
-            seekTo(0)
-            return
+        _player.value?.let {
+            if (it.currentPosition > 3000) {
+                it.seekTo(0)
+            } else if (it.hasPreviousMediaItem()) {
+                it.seekToPrevious()
+            }
         }
-
-        val previousIndex = if (currentIdx > 0) currentIdx - 1 else queue.size - 1
-        _currentIndex.value = previousIndex
-        updateCurrentTrack()
-        playCurrentTrack()
     }
 
     fun togglePlayPause() {
@@ -413,20 +576,20 @@ class MainViewModel @Inject constructor(
     }
 
     fun toggleShuffle() {
-        val currentTrack = _currentTrack.value ?: return
-        val originalQueue = _originalQueue.value
-        val newShuffleState = !_isShuffleEnabled.value
-        _isShuffleEnabled.value = newShuffleState
-
-        if (newShuffleState) {
-            val originalIndex = originalQueue.indexOfFirst { it.id == currentTrack.id }
-            _currentQueue.value = createShuffledQueue(originalQueue, originalIndex)
-            _currentIndex.value = 0
-        } else {
-            _currentQueue.value = originalQueue
-            _currentIndex.value = originalQueue.indexOfFirst { it.id == currentTrack.id }
+        _player.value?.let {
+            it.shuffleModeEnabled = !it.shuffleModeEnabled
         }
-        updateCurrentTrack()
+    }
+
+    fun toggleRepeat() {
+        _player.value?.let {
+            val newMode = when (it.repeatMode) {
+                Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+                Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+                else -> Player.REPEAT_MODE_OFF
+            }
+            it.repeatMode = newMode
+        }
     }
 
     fun seekTo(positionMs: Long) {
@@ -434,8 +597,13 @@ class MainViewModel @Inject constructor(
         _currentPosition.value = positionMs
     }
 
-    fun hasNext() = _currentIndex.value?.let { it < _currentQueue.value.size - 1 } ?: false
-    fun hasPrevious() = _currentIndex.value?.let { it > 0 } ?: false
+    fun hasNext(): Boolean {
+        return _player.value?.hasNextMediaItem() ?: false
+    }
+
+    fun hasPrevious(): Boolean {
+        return _player.value?.hasPreviousMediaItem() ?: false
+    }
 
     override fun onCleared() {
         super.onCleared()

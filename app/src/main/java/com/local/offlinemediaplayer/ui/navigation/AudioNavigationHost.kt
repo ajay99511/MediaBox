@@ -1,0 +1,52 @@
+package com.local.offlinemediaplayer.ui.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import com.local.offlinemediaplayer.ui.screens.*
+import com.local.offlinemediaplayer.viewmodel.MainViewModel
+
+@Composable
+fun AudioNavigationHost(
+    viewModel: MainViewModel,
+    navController: NavHostController
+) {
+    NavHost(
+        navController = navController,
+        startDestination = "audio_library"
+    ) {
+        composable("audio_library") {
+            AudioLibraryScreen(
+                viewModel = viewModel,
+                onNavigateToPlayer = { navController.navigate("now_playing") },
+                onNavigateToPlaylist = { id -> navController.navigate("playlist_detail/$id") },
+                onNavigateToAlbum = { id -> navController.navigate("album_detail/$id") }
+            )
+        }
+        composable("now_playing") {
+            NowPlayingScreen(
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() }
+            )
+        }
+        composable("playlist_detail/{playlistId}") { backStackEntry ->
+            val playlistId = backStackEntry.arguments?.getString("playlistId") ?: return@composable
+            PlaylistDetailScreen(
+                playlistId = playlistId,
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onNavigateToPlayer = { navController.navigate("now_playing") }
+            )
+        }
+        composable("album_detail/{albumId}") { backStackEntry ->
+            val albumId = backStackEntry.arguments?.getString("albumId")?.toLongOrNull() ?: return@composable
+            AlbumDetailScreen(
+                albumId = albumId,
+                viewModel = viewModel,
+                onBack = { navController.popBackStack() },
+                onNavigateToPlayer = { navController.navigate("now_playing") }
+            )
+        }
+    }
+}
