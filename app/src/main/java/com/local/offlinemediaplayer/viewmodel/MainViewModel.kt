@@ -291,7 +291,10 @@ class MainViewModel @Inject constructor(
                 MediaStore.Video.Media.DISPLAY_NAME,
                 MediaStore.Video.Media.DURATION,
                 MediaStore.Video.Media.BUCKET_ID,
-                MediaStore.Video.Media.BUCKET_DISPLAY_NAME
+                MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
+                MediaStore.Video.Media.SIZE,
+                MediaStore.Video.Media.WIDTH,
+                MediaStore.Video.Media.HEIGHT
             )
         } else {
             arrayOf(
@@ -311,9 +314,12 @@ class MainViewModel @Inject constructor(
                 val artistColumn = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST) else -1
                 val albumIdColumn = if (!isVideo) cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID) else -1
 
-                // Folder Info (Only for Video for now)
+                // Video Specific Columns
                 val bucketIdColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.BUCKET_ID) else -1
                 val bucketNameColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.BUCKET_DISPLAY_NAME) else -1
+                val sizeColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.SIZE) else -1
+                val widthColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.WIDTH) else -1
+                val heightColumn = if (isVideo) cursor.getColumnIndex(MediaStore.Video.Media.HEIGHT) else -1
 
                 while (cursor.moveToNext()) {
                     val id = cursor.getLong(idColumn)
@@ -327,10 +333,23 @@ class MainViewModel @Inject constructor(
 
                     var bucketId = ""
                     var bucketName = ""
+                    var size: Long = 0
+                    var resolution = ""
 
                     if (isVideo) {
                         bucketId = if(bucketIdColumn != -1) cursor.getString(bucketIdColumn) ?: "" else ""
                         bucketName = if(bucketNameColumn != -1) cursor.getString(bucketNameColumn) ?: "Unknown" else "Unknown"
+                        size = if(sizeColumn != -1) cursor.getLong(sizeColumn) else 0
+
+                        val width = if(widthColumn != -1) cursor.getInt(widthColumn) else 0
+                        val height = if(heightColumn != -1) cursor.getInt(heightColumn) else 0
+
+                        resolution = if(height >= 2160) "4K"
+                        else if(height >= 1080) "1080P"
+                        else if(height >= 720) "720P"
+                        else if(height >= 480) "480P"
+                        else if (height > 0) "${height}P"
+                        else ""
                     } else {
                         artist = cursor.getString(artistColumn) ?: "Unknown Artist"
                         albumId = cursor.getLong(albumIdColumn)
@@ -338,8 +357,7 @@ class MainViewModel @Inject constructor(
                         albumArtUri = ContentUris.withAppendedId(sArtworkUri, albumId)
                     }
 
-                    // isImage = false
-                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, false, albumArtUri, albumId, bucketId, bucketName))
+                    mediaList.add(MediaFile(id, contentUri, name, artist, duration, isVideo, false, albumArtUri, albumId, bucketId, bucketName, size, resolution))
                 }
             }
         } catch (e: Exception) {

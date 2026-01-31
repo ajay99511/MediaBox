@@ -12,5 +12,7 @@ data class MediaFile(
     val albumArtUri: Uri? = null,
     val albumId: Long = -1,
     val bucketId: String = "",
-    val bucketName: String = ""
+    val bucketName: String = "",
+    val size: Long = 0,
+    val resolution: String = ""
 )
