@@ -41,6 +41,10 @@ enum class SortOption {
     TITLE_ASC, TITLE_DESC, DURATION_ASC, DURATION_DESC, DATE_ADDED_DESC
 }
 
+enum class ResizeMode {
+    FIT, FILL, ZOOM
+}
+
 @OptIn(UnstableApi::class)
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -155,6 +159,19 @@ class MainViewModel @Inject constructor(
     private val _duration = MutableStateFlow(0L)
     val duration = _duration.asStateFlow()
 
+    // --- NEW VIDEO PLAYER STATES ---
+    private val _isPlayerLocked = MutableStateFlow(false)
+    val isPlayerLocked = _isPlayerLocked.asStateFlow()
+
+    private val _resizeMode = MutableStateFlow(ResizeMode.FIT)
+    val resizeMode = _resizeMode.asStateFlow()
+
+    private val _playbackSpeed = MutableStateFlow(1.0f)
+    val playbackSpeed = _playbackSpeed.asStateFlow()
+
+    private val _isInPipMode = MutableStateFlow(false)
+    val isInPipMode = _isInPipMode.asStateFlow()
+
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var positionUpdateJob: Job? = null
 
@@ -194,6 +211,7 @@ class MainViewModel @Inject constructor(
                     _isPlaying.value = controller.isPlaying
                     _isShuffleEnabled.value = controller.shuffleModeEnabled
                     _repeatMode.value = controller.repeatMode
+                    _playbackSpeed.value = controller.playbackParameters.speed
                     updateCurrentTrackFromPlayer(controller)
                 }
             } catch (e: Exception) {
@@ -221,6 +239,10 @@ class MainViewModel @Inject constructor(
 
             override fun onRepeatModeChanged(repeatMode: Int) {
                 _repeatMode.value = repeatMode
+            }
+
+            override fun onPlaybackParametersChanged(playbackParameters: androidx.media3.common.PlaybackParameters) {
+                _playbackSpeed.value = playbackParameters.speed
             }
 
             override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -541,6 +563,10 @@ class MainViewModel @Inject constructor(
 
     fun playMedia(media: MediaFile) {
         if (media.isVideo) {
+            // Reset player state for new video
+            _isPlayerLocked.value = false
+            _playbackSpeed.value = 1.0f
+            _resizeMode.value = ResizeMode.FIT
             playSingleMedia(media)
         } else if (media.isImage) {
             // No-op for now, or implement image viewer logic
@@ -621,6 +647,32 @@ class MainViewModel @Inject constructor(
             .build()
     }
 
+    // --- Video Player Specific Actions ---
+
+    fun toggleLock() {
+        _isPlayerLocked.value = !_isPlayerLocked.value
+    }
+
+    fun toggleResizeMode() {
+        val modes = ResizeMode.values()
+        val nextIndex = (_resizeMode.value.ordinal + 1) % modes.size
+        _resizeMode.value = modes[nextIndex]
+    }
+
+    fun cyclePlaybackSpeed() {
+        val speeds = listOf(0.5f, 1.0f, 1.25f, 1.5f, 2.0f)
+        val current = _playbackSpeed.value
+        val nextIndex = speeds.indexOfFirst { it > current }
+        val newSpeed = if (nextIndex != -1) speeds[nextIndex] else speeds[0]
+
+        _player.value?.setPlaybackSpeed(newSpeed)
+        _playbackSpeed.value = newSpeed // Listener updates too, but this is immediate for UI
+    }
+
+    fun setPipMode(isPip: Boolean) {
+        _isInPipMode.value = isPip
+    }
+
     // --- Controls ---
 
     fun playNext() {
@@ -661,6 +713,18 @@ class MainViewModel @Inject constructor(
     fun seekTo(positionMs: Long) {
         _player.value?.seekTo(positionMs)
         _currentPosition.value = positionMs
+    }
+
+    fun rewind() {
+        _player.value?.let {
+            it.seekTo((it.currentPosition - 10000).coerceAtLeast(0))
+        }
+    }
+
+    fun forward() {
+        _player.value?.let {
+            it.seekTo((it.currentPosition + 10000).coerceAtMost(it.duration))
+        }
     }
 
     fun hasNext(): Boolean {
